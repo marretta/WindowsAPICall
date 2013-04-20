@@ -1,0 +1,526 @@
+Option Strict On
+Option Explicit On
+
+Imports System.Runtime.InteropServices
+
+#Region " modulo Win32API "
+''' <summary>
+''' Modulo di interoperabilità
+''' </summary>
+''' <remarks></remarks>
+Module Win32_IO
+
+#Region " Costanti "
+    Private Const MAX_PATH As Integer = 260
+    Private Const MAX_ALTERNATE As Integer = 14
+
+    Private Const GENERIC_READ As Integer = &H80000000
+    Private Const GENERIC_WRITE As Integer = &H40000000
+    Private Const OPEN_EXISTING As Integer = 3
+    Private Const CREATE_ALWAYS As Integer = 2
+    Private Const INVALID_HANDLE_VALUE As Integer = -1
+    Private Const IO_BUFFER_SIZE As Integer = 1024
+    Private Const FILE_FLAG_OVERLAPPED As Int32 = &H40000000
+    Private Const WAIT_OBJECT_0 As Int32 = 0
+    Private Const WAIT_TIMEOUT As Int32 = &H102&
+    Private Const INFINITE As Int32 = &HFFFFFFFF
+#End Region
+
+#Region " Enumerazioni "
+    '// Working mode
+    Private Enum Mode
+        NonOverlapped
+        Overlapped
+    End Enum
+#End Region
+
+#Region " Dichiarazioni private "
+    Private meMode As Mode  '//  Modalità di lavoro della classe  
+    Private muOvlW As OVERLAPPED
+#End Region
+
+#Region " Strutture "
+    <StructLayout(LayoutKind.Sequential)> _
+    Private Structure FILETIME
+        Public dwLowDateTime As UInteger
+        Public dwHighDateTime As UInteger
+    End Structure
+
+    <StructLayout(LayoutKind.Sequential, CharSet:=CharSet.Unicode)> _
+    Private Structure WIN32_FIND_DATA
+        Public dwFileAttributes As IO.FileAttributes
+        Public ftCreationTime As FILETIME
+        Public ftLastAccessTime As FILETIME
+        Public ftLastWriteTime As FILETIME
+        Public nFileSizeHigh As UInteger
+        Public nFileSizeLow As UInteger
+        Public dwReserved0 As UInteger
+        Public dwReserved1 As UInteger
+        <MarshalAs(UnmanagedType.ByValTStr, SizeConst:=MAX_PATH)> _
+        Public cFileName As String
+        <MarshalAs(UnmanagedType.ByValTStr, SizeConst:=MAX_ALTERNATE)> _
+        Public cAlternate As String
+    End Structure
+
+    <StructLayout(LayoutKind.Sequential, Pack:=8)> _
+    Private Structure OVERLAPPED
+        Private InternalLow As IntPtr
+        Private InternalHigh As IntPtr
+        Public Offset As Long
+        Public EventHandle As IntPtr
+    End Structure
+
+    <StructLayout(LayoutKind.Sequential)> _
+    Private Structure SECURITY_ATTRIBUTES
+        Public nLength As Integer
+        Public lpSecurityDescriptor As IntPtr
+        Public bInheritHandle As Integer
+    End Structure
+#End Region
+
+#Region " WIN32 API "
+    <DllImport("kernel32", CharSet:=CharSet.Unicode)> Private Function FindFirstFile(ByVal lpFileName As String, ByRef lpFindFileData As WIN32_FIND_DATA) As IntPtr
+    End Function
+    <DllImport("kernel32", CharSet:=CharSet.Unicode)> Private Function FindNextFile(ByVal hFindFile As IntPtr, ByRef lpFindFileData As WIN32_FIND_DATA) As Boolean
+    End Function
+    <DllImport("kernel32.dll", CharSet:=CharSet.Unicode, SetLastError:=True)> Private Function FindClose(ByVal hFindFile As IntPtr) As Boolean
+    End Function
+    <DllImport("kernel32.dll", CharSet:=CharSet.Unicode, SetLastError:=True)> Private Function RemoveDirectory(ByVal lpPathName As String) As Boolean
+    End Function
+    <DllImport("kernel32.dll", CharSet:=CharSet.Unicode, SetlastError:=True)> Private Function WriteFile(ByVal hFile As IntPtr, ByVal Buffer As Byte(), ByVal nNumberOfBytesToWrite As Integer, ByRef lpNumberOfBytesWritten As Integer, ByRef lpOverlapped As OVERLAPPED) As Integer
+    End Function
+    <DllImport("kernel32.dll", CharSet:=CharSet.Unicode, SetlastError:=True)> Private Function ReadFile(ByVal hFile As IntPtr, <Out()> ByVal Buffer As Byte(), ByVal nNumberOfBytesToRead As Integer, ByRef lpNumberOfBytesRead As Integer, ByRef lpOverlapped As OVERLAPPED) As Integer
+    End Function
+    <DllImport("kernel32.dll", SetlastError:=True, CharSet:=CharSet.Auto)> Private Function CreateFile(ByVal lpFileName As String, ByVal dwDesiredAccess As Integer, ByVal dwShareMode As Integer, ByVal lpSecurityAttributes As Integer, ByVal dwCreationDisposition As Integer, ByVal dwFlagsAndAttributes As Integer, ByVal hTemplateFile As Integer) As IntPtr
+    End Function
+    <DllImport("kernel32.dll", SetlastError:=True)> Private Function CloseHandle(ByVal hObject As IntPtr) As Boolean
+    End Function
+    <DllImport("kernel32.dll", SetlastError:=True, CharSet:=CharSet.Auto)> Private Function CreateEvent(ByVal lpEventAttributes As IntPtr, ByVal bManualReset As Int32, ByVal bInitialState As Int32, ByVal lpName As String) As IntPtr
+    End Function
+    <DllImport("kernel32.dll", SetlastError:=True)> Private Function GetOverlappedResult(ByVal hFile As IntPtr, ByRef lpOverlapped As OVERLAPPED, ByRef lpNumberOfBytesTransferred As Int32, ByVal bWait As Int32) As Int32
+    End Function
+    <DllImport("kernel32.dll", SetlastError:=True)> Private Function GetFileSize(ByVal hFile As IntPtr, ByVal lpFileSizeHigh As IntPtr) As UInteger
+    End Function
+    <DllImport("Dbghelp.dll", SetlastError:=True)> Private Function MakeSureDirectoryPathExists(ByVal DirPath As String) As Boolean
+    End Function
+    ''' <summary>
+    ''' Crea una dorectory
+    ''' </summary>
+    ''' <param name="lpPathName">Path directory che si intende creare</param>
+    ''' <param name="lpSecurityAttributes">Struttura SECURITY_ATTRBUTES per attribuire la sicurezza alla directory</param>
+    ''' <returns>Boolean</returns>
+    ''' <remarks></remarks>
+    <DllImport("kernel32.dll", CharSet:=CharSet.Unicode, SetlastError:=True)> Private Function CreateDirectory(ByVal lpPathName As String, ByVal lpSecurityAttributes As SECURITY_ATTRIBUTES) As <MarshalAs(UnmanagedType.Bool)> Boolean
+    End Function
+    ''' <summary>
+    ''' Restituisce il nome del file in formato 8bit
+    ''' </summary>
+    ''' <param name="longPath"></param>
+    ''' <param name="ShortPath"></param>
+    ''' <param name="bufferSize"></param>
+    ''' <returns>Integer</returns>
+    ''' <remarks></remarks>
+    <DllImport("kernel32.dll", SetLastError:=False, CharSet:=Runtime.InteropServices.CharSet.Auto)> _
+   Private Function GetShortPathName(ByVal longPath As String, _
+   <Runtime.InteropServices.MarshalAs(Runtime.InteropServices.UnmanagedType.LPTStr)> _
+   ByVal ShortPath As System.Text.StringBuilder, _
+   <Runtime.InteropServices.MarshalAs(Runtime.InteropServices.UnmanagedType.U4)> _
+   ByVal bufferSize As Integer) As Integer
+    End Function
+    ''' <summary>
+    ''' Elimina un file
+    ''' </summary>
+    ''' <param name="lpFileName">File da eliminare</param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public Declare Function DeleteFile Lib "kernel32.dll" Alias "DeleteFileA" (ByVal lpFileName As String) As Long
+    <DllImport("kernel32.dll", SetLastError:=True)> _
+    Private Function Wow64DisableWow64FsRedirection(ByRef ptr As IntPtr) As Boolean
+    End Function
+#End Region
+
+#Region " Cerca ricorsivamente il primo file di una struttura di directory "
+    ''' <summary>
+    ''' Restituisce il primo file trovato in una diectory. Possibilità di ricerca ricorsiva
+    ''' </summary>
+    ''' <param name="dir">Directory in cui eseguire la ricerca</param>
+    ''' <param name="filterFile">Imposta il filtro per la ricerca dei files</param>
+    ''' <param name="level">il livello di profondità di ricerca ricorsiva</param>
+    ''' <param name="files">Restituisce il numero di files trovati</param>
+    ''' <param name="folders">Restituisce il numero di directories trovate</param>
+    ''' <param name="FoundFileName">il nome del file trovato</param>
+    ''' <returns>Long</returns>
+    ''' <remarks></remarks>
+    Public Function RecurseDirectory(ByVal dir As String, ByVal filterFile As String, ByVal level As Integer, ByRef files As Integer, ByRef folders As Integer, ByRef FoundFileName As String) As Long
+        Dim INVALID_HANDLE_VALUE As New IntPtr(-1)
+        Dim size As Long = 0
+        files = 0
+        folders = 0
+        Dim findData As New WIN32_FIND_DATA
+        Dim fileName As String = ""
+        Dim findHandle As IntPtr
+
+        Try
+            ' cerco il primo file nella directory
+            findHandle = FindFirstFile(dir & filterFile, findData)
+
+            If findHandle <> INVALID_HANDLE_VALUE Then
+                Do
+                    If (findData.dwFileAttributes And IO.FileAttributes.Directory) <> 0 Then
+                        If findData.cFileName <> "." AndAlso findData.cFileName <> ".." Then
+                            folders += 1
+                            Dim subfiles As Integer, subfolders As Integer
+                            Dim subdirectory As String = dir + (IIf(dir.EndsWith("\"), "", "\").ToString) + findData.cFileName
+                            If level <> 0 Then
+                                ' allows -1 to do complete search.
+                                size += RecurseDirectory(subdirectory, filterFile, level - 1, subfiles, subfolders, "")
+                                ' incremento il contatore di file e cartelle
+                                folders += subfolders
+                                files += subfiles
+                                If subfiles = 0 Then
+                                    RemoveDirectory(subdirectory)
+                                End If
+                            End If
+                        End If
+                    Else
+                        fileName = findData.cFileName
+                        ' File
+                        files += 1
+                        Exit Do
+                    End If
+
+                Loop While FindNextFile(findHandle, findData) ' Avanzo di un file
+
+                FindClose(findHandle)
+            End If
+            FoundFileName = IIf(dir.EndsWith("\"), dir, dir + "\").ToString + fileName
+            Return size 'IIf(directory.EndsWith("\"), directory, directory + "\") + fileName
+        Catch ex As Exception
+        Finally
+            findData = Nothing
+            INVALID_HANDLE_VALUE = Nothing
+            findHandle = Nothing
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Restituisce un array con i files di una data directory
+    ''' </summary>
+    ''' <param name="dir">Directory in cui eseguire la ricerca</param>
+    ''' <param name="filterFile">Imposta il filtro per la ricerca dei files</param>
+    ''' <param name="level">il livello di profondità di ricerca ricorsiva</param>
+    ''' <param name="files">Restituisce il numero di files trovati</param>
+    ''' <returns>Long</returns>
+    ''' <remarks></remarks>
+    Public Function getFiles(ByVal dir As String, ByVal filterFile As String, ByVal level As Integer, ByRef files As Integer) As List(Of String)
+        Dim INVALID_HANDLE_VALUE As New IntPtr(-1)
+        Dim size As Long = 0
+        files = 0
+        Dim findData As New WIN32_FIND_DATA
+        Dim fileName As String = ""
+        Dim findHandle As IntPtr
+        Dim filesArray As List(Of String) = New List(Of String)
+
+        Try
+            ' cerco il primo file nella directory
+            findHandle = FindFirstFile(dir & filterFile, findData)
+            'filesArray.Add(findData.cFileName)
+            If findHandle <> INVALID_HANDLE_VALUE Then
+                Do
+                    If (findData.dwFileAttributes And IO.FileAttributes.Directory) <> 0 Then
+                        If findData.cFileName <> "." AndAlso findData.cFileName <> ".." AndAlso findData.cFileName.Trim <> "" Then
+                            Dim subfiles As Integer, subfolders As Integer
+                            Dim subdirectory As String = dir + (IIf(dir.EndsWith("\"), "", "\").ToString) + findData.cFileName
+                            If level <> 0 Then
+                                ' allows -1 to do complete search.
+                                size += RecurseDirectory(subdirectory, filterFile, level - 1, subfiles, subfolders, "")
+                                ' incremento il contatore di file e cartelle
+                                files += subfiles
+                                If subfiles = 0 Then
+                                    RemoveDirectory(subdirectory)
+                                End If
+                            End If
+                        End If
+                    Else
+                        fileName = dir + findData.cFileName
+                        files += 1
+                        filesArray.Add(fileName)
+                    End If
+
+                Loop While FindNextFile(findHandle, findData) ' Avanzo di un file
+                ' chiudo l'handle di ricerca
+                FindClose(findHandle)
+            End If
+            Return filesArray
+        Catch ex As Exception
+            Throw New Exception(getWinErrDef(Marshal.GetLastWin32Error), ex.InnerException)
+        Finally
+            findData = Nothing
+            INVALID_HANDLE_VALUE = Nothing
+            findHandle = Nothing
+        End Try
+    End Function
+#End Region
+
+#Region " FileExists "
+    ''' <summary>
+    ''' Verifica l'esistenza di un file utilizzando la funzione FindFirstFile del kernel
+    ''' </summary>
+    ''' <param name="sSource">File di cui verificare l'esistenza</param>
+    ''' <returns>Boolean</returns>
+    ''' <remarks></remarks>
+    Public Function FileExists(ByVal sSource As String) As Boolean
+        Dim INVALID_HANDLE_VALUE As New IntPtr(-1)
+        Dim WFD As New WIN32_FIND_DATA
+        Dim hFile As IntPtr
+        Try
+            hFile = FindFirstFile(sSource, WFD)
+            FileExists = hFile <> INVALID_HANDLE_VALUE
+
+        Catch ex As Exception
+            Throw New Exception(getWinErrDef(Marshal.GetLastWin32Error), ex.InnerException)
+        Finally
+            FindClose(hFile)
+        End Try
+    End Function
+#End Region
+
+#Region " Restituisce il numero di files contenuti in una directory e sottodirectories "
+    ''' <summary>
+    ''' Restituisce il numero di files trovati in una diectory. Possibilità di ricerca ricorsiva
+    ''' </summary>
+    ''' <param name="dir">Directory in cui eseguire la ricerca</param>
+    ''' <param name="level">il livello di profondità di ricerca ricorsiva</param>
+    ''' <param name="files">Restituisce il numero di files trovati</param>
+    ''' <param name="folders">Restituisce il numero di directories trovate</param>
+    ''' <returns>Long</returns>
+    ''' <remarks></remarks>
+    Public Function getFileCount(ByVal dir As String, ByVal level As Integer, ByRef files As Integer, ByRef folders As Integer) As IntPtr
+        Dim INVALID_HANDLE_VALUE As New IntPtr(-1)
+        Dim size As Long = 0
+        files = 0
+        folders = 0
+        Dim findData As New WIN32_FIND_DATA
+        Dim fileName As String = ""
+        Dim findHandle As IntPtr
+
+        Try
+            ' cerco il primo file nella directory
+            findHandle = FindFirstFile(dir & "*", findData)
+
+            If findHandle <> INVALID_HANDLE_VALUE Then
+                Do
+                    If (findData.dwFileAttributes And IO.FileAttributes.Directory) <> 0 Then
+                        If findData.cFileName <> "." AndAlso findData.cFileName <> ".." Then
+                            folders += 1
+                            Dim subfiles As Integer, subfolders As Integer
+                            Dim subdirectory As String = dir + (IIf(dir.EndsWith("\"), "", "\").ToString) + findData.cFileName
+                            If level <> 0 Then
+                                ' incremento il contatore di file e cartelle
+                                folders += subfolders
+                                files += subfiles
+                                If subfiles = 0 Then
+                                    RemoveDirectory(subdirectory)
+                                End If
+                            End If
+                        End If
+                    Else
+                        fileName = findData.cFileName
+                        ' Incremente il numero di file
+                        files += 1
+                    End If
+                Loop While FindNextFile(findHandle, findData) ' Avanzo di un file
+                FindClose(findHandle)
+            End If
+            Return New IntPtr(0)
+        Catch ex As Exception
+Throw New Exception(getWinErrDef(Marshal.GetLastWin32Error), ex.InnerException)
+        Finally
+            findData = Nothing
+            INVALID_HANDLE_VALUE = Nothing
+            findHandle = Nothing
+        End Try
+    End Function
+#End Region
+
+#Region " ReadFile "
+    ''' <summary>
+    ''' Legge il contenuto di un file in formato binario
+    ''' </summary>
+    ''' <param name="FileName">Nome del file</param>
+    ''' <returns>Byte[]</returns>
+    ''' <remarks></remarks>
+    Public Function ReadFile(ByVal FileName As String) As Byte()
+        Dim hFile As IntPtr
+        Dim FileSize As UInteger
+        Dim buffer As Byte()
+        Dim bytesRed As Integer
+        Dim overLapped As OVERLAPPED
+        Try
+
+            hFile = CreateFile(FileName, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0)
+            If hFile.ToInt32 <> INVALID_HANDLE_VALUE Then
+                FileSize = GetFileSize(hFile, IntPtr.Zero)
+                ReDim buffer(CInt(FileSize))
+                If FileSize <> &HFFFFFFFF Then
+                    ReadFile(hFile, buffer, buffer.Length, bytesRed, overLapped)
+                    If Marshal.GetLastWin32Error <> 0 Then
+                    End If
+                End If
+            End If
+            CloseHandle(hFile)
+            Return buffer
+        Catch ex As Exception
+
+        End Try
+    End Function
+#End Region
+
+#Region " CreateDirectory "
+    Public Function createDirectory(ByVal lpPathName As String, ByVal blnOverwrite As Boolean) As Boolean
+        '        Dim lpSecurityAttributes As SECURITY_ATTRIBUTES = New SECURITY_ATTRIBUTES()
+        'Dim Security As System.Security.AccessControl.DirectorySecurity = New System.Security.AccessControl.DirectorySecurity(lpPathName, System.Security.AccessControl.AccessControlSections.Access)
+        'lpSecurityAttributes.nLength = Marshal.SizeOf(lpSecurityAttributes)
+        'Dim src As Byte() = Security.GetSecurityDescriptorBinaryForm()
+        'Dim dest As IntPtr = Marshal.AllocHGlobal(src.Length)
+        Dim lpSecurityAttributes As SECURITY_ATTRIBUTES = Nothing
+        Try
+            '   Marshal.Copy(src, 0, dest, src.Length)
+            '   lpSecurityAttributes.lpSecurityDescriptor = dest
+            If blnOverwrite Then
+                'If MakeSureDirectoryPathExists(lpPathName) Then
+                If RemoveDirectory(lpPathName) Then
+                    Dim errDir As Int32 = Marshal.GetLastWin32Error
+                    If errDir <> 0 AndAlso errDir <> WMDefs.WM_ERROR_IO_FILE_NOT_FOUND Then
+                        Throw New Exception(getWinErrDef(errDir), New IO.IOException)
+                    End If
+                End If
+            End If
+            'End If
+            'End If
+            createDirectory(lpPathName, lpSecurityAttributes)
+            Dim err As Int32 = Marshal.GetLastWin32Error
+            If err <> 0 Then
+                Throw New Exception(getWinErrDef(err), New IO.IOException)
+            End If
+        Catch ex As Exception
+            Throw ex
+        Finally
+            'Security = Nothing
+            'src = Nothing
+            'dest = Nothing
+        End Try
+    End Function
+#End Region
+
+#Region " RemoveDirectory "
+    Public Function DeleteDirectory(ByVal lpDirName As String) As Boolean
+        Return RemoveDirectory(lpDirName)
+    End Function
+#End Region
+
+#Region " WriteFile "
+    ''' <summary>
+    ''' Scrive un file
+    ''' </summary>
+    ''' <param name="FileName">Nome del file da creare e su cui scrivere</param>
+    ''' <param name="buffer">Array di byte da scrivere</param>
+    ''' <param name="NoOverwrite"></param>
+    ''' <returns>Boolean</returns>
+    ''' <remarks></remarks>
+    Public Function WriteFile(ByVal FileName As String, ByVal buffer() As Byte, _
+                              Optional ByVal NoOverwrite As Boolean = False) As Boolean
+        Dim lHandle As IntPtr
+        If NoOverwrite = True And FileExists(FileName) Then Exit Function
+        meMode = Mode.NonOverlapped
+        Dim iMode As Int32 = Convert.ToInt32(IIf(meMode = Mode.Overlapped, FILE_FLAG_OVERLAPPED, 0))
+        If FileExists(FileName) Then
+            DeleteFile(FileName)
+        End If
+        lHandle = CreateFile(FileName, GENERIC_READ Or GENERIC_WRITE, &H2, 0, CREATE_ALWAYS, iMode, 0)
+
+        If lHandle.ToInt32 <> INVALID_HANDLE_VALUE Then
+            Dim iRc, iBytesWritten As Integer, hOvl As GCHandle
+            muOvlW = New OVERLAPPED
+            Try
+                hOvl = GCHandle.Alloc(muOvlW, GCHandleType.Normal)
+                muOvlW.EventHandle = CreateEvent(Nothing, 1, 0, Nothing)
+                If muOvlW.EventHandle.ToInt32 = 0 Then Throw New ApplicationException("Errore nella creazione dell'evento per la scrittura sovrapposta")
+                '// Clears IO buffers and sends data
+                iRc = WriteFile(lHandle, buffer, buffer.Length, iBytesWritten, muOvlW)
+                If iRc = 0 Then
+                    If Marshal.GetLastWin32Error <> WMDefs.WM_ERROR_IO_PENDING Then
+                        Throw New ApplicationException("Errore di scrittura")
+                    Else
+
+                        If GetOverlappedResult(lHandle, muOvlW, iBytesWritten, 1) = 0 Then
+                            Throw New ApplicationException("Errore")
+                        Else
+                            '// Controllo se tutti i bytes sono stati scritti
+                            If iBytesWritten <> buffer.Length Then Throw New ApplicationException("Errore di scrittura - Scritti " & iBytesWritten.ToString & " bytes su " & buffer.Length.ToString)
+                        End If
+                    End If
+                End If
+                WriteFile = CType(iRc, Boolean)
+            Finally
+                ' Chiudo l'handler dell'evento
+                CloseHandle(muOvlW.EventHandle)
+                ' Chiudo l'handle del file
+                CloseHandle(lHandle)
+                If (hOvl.IsAllocated = True) Then hOvl.Free()
+            End Try
+        End If
+    End Function
+
+#Region " WriteFile Async "
+    Public Function WriteFile(ByVal FileName As String, ByVal buffer() As Byte, ByVal HandleOutput As IntPtr, Optional ByVal NoOverwrite As Boolean = False) As Boolean
+        Try
+            WriteFile(FileName, buffer, NoOverwrite)
+            Win32.SendMessage(HandleOutput, Win32.WMDefs.RF_TESTMESSAGE, IntPtr.Zero, IntPtr.Zero)
+        Catch ex As Exception
+#If DEBUG Then
+            Console.WriteLine("errore {0}", ex.Message)
+#End If
+        End Try
+    End Function
+
+#End Region
+#End Region
+
+#Region " ShortPathName "
+
+    Public Function ShortPathName(ByVal Path As String) As String
+        Dim sb As New System.Text.StringBuilder(1024)
+        Dim tempVal As Integer = GetShortPathName(Path, sb, 1024)
+        Try
+            If tempVal <> 0 Then
+                Dim Result As String = sb.ToString()
+                Return Result
+            Else
+                Throw New Exception("Error getting shortPathName")
+            End If
+        Catch ex As Exception
+            Throw ex
+        End Try
+
+    End Function
+
+    Public Function ShortPathNameFile(ByVal Path As String) As String
+        Dim sb As New System.Text.StringBuilder(1024)
+        Dim tempVal As Integer = GetShortPathName(Path, sb, 1024)
+        Try
+            If tempVal <> 0 Then
+                Dim Result As String = sb.ToString()
+                Return Result
+            Else
+                Throw New Exception("Error getting shortPathName")
+            End If
+        Catch ex As Exception
+            Throw ex
+        End Try
+    End Function
+#End Region
+
+End Module
+
+#End Region
